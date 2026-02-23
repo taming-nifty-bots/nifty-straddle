@@ -40,40 +40,40 @@ jobs:
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }}
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_ANALYSIS_IMAGE_NAME }}
 
-      # - name: Deploy to Option Buy
-      #   uses: azure/CLI@v1
-      #   with:
-      #     inlineScript: |
-      #       az containerapp job update \
-      #         --name ${{ secrets.OPTION_BUY_JOB_NAME }} \
-      #         --resource-group ${{ secrets.RESOURCE_GROUP }} \
-      #         --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.NIFTY_IMAGE_NAME }}
+      - name: Deploy to Nifty Straddle Signal Job
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az containerapp job update \
+              --name ${{ secrets.NIFTY_STRADDLE_SIGNAL_JOB_NAME }} \
+              --resource-group ${{ secrets.RESOURCE_GROUP }} \
+              --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_ANALYSIS_IMAGE_NAME }}
 
-      # - name: Deploy to Signal Job
-      #   uses: azure/CLI@v1
-      #   with:
-      #     inlineScript: |
-      #       az containerapp job update \
-      #         --name ${{ secrets.SIGNAL_JOB_NAME }} \
-      #         --resource-group ${{ secrets.RESOURCE_GROUP }} \
-      #         --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }}
+      - name: Deploy to Nifty Straddle Job
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az containerapp job update \
+              --name ${{ secrets.NIFTY_STRADDLE_JOB_NAME }} \
+              --resource-group ${{ secrets.RESOURCE_GROUP }} \
+              --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }}
 
-      # - name: Restart running Signal jobs
-      #   uses: azure/CLI@v1
-      #   with:
-      #     inlineScript: |
-      #       running_jobs=$(az containerapp job execution list --name ${{ secrets.SIGNAL_JOB_NAME }} --resource-group ${{ secrets.RESOURCE_GROUP }} --query "[?properties.status=='Running']")
-      #       if [ "$running_jobs" != "[]" ]; then
-      #         az containerapp job stop -n ${{ secrets.SIGNAL_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
-      #         az containerapp job start -n ${{ secrets.SIGNAL_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
-      #       fi
+      - name: Restart running Signal jobs
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            running_jobs=$(az containerapp job execution list --name ${{ secrets.NIFTY_STRADDLE_SIGNAL_JOB_NAME }} --resource-group ${{ secrets.RESOURCE_GROUP }} --query "[?properties.status=='Running']")
+            if [ "$running_jobs" != "[]" ]; then
+              az containerapp job stop -n ${{ secrets.NIFTY_STRADDLE_SIGNAL_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
+              az containerapp job start -n ${{ secrets.NIFTY_STRADDLE_SIGNAL_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
+            fi
 
-      # - name: Restart running Option Buy jobs
-      #   uses: azure/CLI@v1
-      #   with:
-      #     inlineScript: |
-      #       running_jobs=$(az containerapp job execution list --name ${{ secrets.OPTION_BUY_JOB_NAME }} --resource-group ${{ secrets.RESOURCE_GROUP }} --query "[?properties.status=='Running']")
-      #       if [ "$running_jobs" != "[]" ]; then
-      #         az containerapp job stop -n ${{ secrets.OPTION_BUY_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
-      #         az containerapp job start -n ${{ secrets.OPTION_BUY_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
-      #       fi
+      - name: Restart running Nifty Straddle jobs
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            running_jobs=$(az containerapp job execution list --name ${{ secrets.NIFTY_STRADDLE_JOB_NAME }} --resource-group ${{ secrets.RESOURCE_GROUP }} --query "[?properties.status=='Running']")
+            if [ "$running_jobs" != "[]" ]; then
+              az containerapp job stop -n ${{ secrets.NIFTY_STRADDLE_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
+              az containerapp job start -n ${{ secrets.NIFTY_STRADDLE_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
+            fi
