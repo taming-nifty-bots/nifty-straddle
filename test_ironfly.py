@@ -30,13 +30,13 @@ def assert_raises(call):
     raise AssertionError("Expected explicit ValueError")
 
 
-def master():
+def master(wing_width=1000):
     rows = [{"EXCH_ID": "BSE", "INSTRUMENT": "INDEX", "SYMBOL_NAME": "SENSEX",
              "SECURITY_ID": 1},
             {"EXCH_ID": "NSE", "INSTRUMENT": "INDEX", "SYMBOL_NAME": "India VIX",
              "SECURITY_ID": 2}]
     for strike, kind, security in [(80000, "CE", 10), (80000, "PE", 11),
-                                    (78000, "PE", 12), (82000, "CE", 13)]:
+                                    (80000 - wing_width, "PE", 12), (80000 + wing_width, "CE", 13)]:
         rows.append({"EXCH_ID": "BSE", "SEGMENT": "D", "INSTRUMENT": "OPTIDX",
                      "UNDERLYING_SYMBOL": "SENSEX", "SYMBOL_NAME": "BSXOPT",
                      "SM_EXPIRY_DATE": EXPIRY.isoformat(), "EXPIRY_FLAG": "M",
@@ -50,8 +50,8 @@ def history():
     return pd.DataFrame({"datetime": dates, "close": [10.0] * len(dates)})
 
 
-def candidate():
-    prices = {1: 80000, 21: 20, 10: 1100, 11: 900, 12: 250, 13: 250}
+def candidate(wing_width=1000, short_ce=1100, short_pe=900):
+    prices = {1: 80000, 21: 20, 10: short_ce, 11: short_pe, 12: 750, 13: 750}
 
     def quote(conn, security, segment, instrument, cutoff):
         if instrument == "OPTIDX":
@@ -60,7 +60,7 @@ def candidate():
 
     with patch.object(fly, "candle_price", side_effect=quote), \
             patch.object(fly.edge, "fetch_candles", return_value=history()):
-        return fly.build_candidate(None, master(), CUTOFF)
+        return fly.build_candidate(None, master(wing_width), CUTOFF)
 
 
 def collection(initial=()):
@@ -157,23 +157,44 @@ def test_vix_prior_year_strict_percentile_and_missing_history():
     assert_raises(lambda: fly.vix_percentile(data, 20, TODAY))
 
 
-def test_candidate_four_legs_symmetric_premium_wings_one_lot():
+def test_candidate_four_legs_symmetric_half_premium_wings_one_lot():
     signal = candidate()
     assert signal["eligible"] is True
-    assert signal["atm"] == 80000 and signal["wing_width"] == 2000
-    assert signal["credit_per_unit"] == 1500 and signal["quantity"] == 20
+    assert signal["atm"] == 80000 and signal["wing_width"] == 1000
+    assert signal["credit_per_unit"] == 500 and signal["quantity"] == 20
     assert [leg["side"] for leg in signal["legs"]] == ["BUY", "BUY", "SELL", "SELL"]
-    assert [leg["strike"] for leg in signal["legs"]] == [78000, 82000, 80000, 80000]
+    assert [leg["strike"] for leg in signal["legs"]] == [79000, 81000, 80000, 80000]
     assert signal["expiry"] == EXPIRY.isoformat()
-    assert fly.open_trade(signal)["total_credit_received"] == 30000
+    assert fly.open_trade(signal)["total_credit_received"] == 10000
+    assert signal["strategy_version"] == "sensex-ironfly-45dte-v2"
 
 
-def test_vix_filter_blocks_equal_and_below_50():
-    with patch.object(fly, "candle_price", return_value=(80000, CUTOFF - timedelta(minutes=1))), \
-            patch.object(fly.edge, "fetch_candles", return_value=history()), \
-            patch.object(fly, "vix_percentile", return_value=50):
-        signal = fly.build_candidate(None, master(), CUTOFF)
-    assert signal["eligible"] is False and "legs" not in signal
+def test_vix_filter_blocks_at_or_below_25_and_allows_above():
+    for percentile in (0, 24.9999, 25):
+        with patch.object(fly, "vix_percentile", return_value=percentile):
+            signal = candidate()
+        assert signal["eligible"] is False and "legs" not in signal
+        assert "25th percentile" in signal["reason"]
+    for percentile in (25.0001, 49.9, 50, 100):
+        with patch.object(fly, "vix_percentile", return_value=percentile):
+            assert candidate()["eligible"] is True
+
+
+def test_half_premium_wing_distance_rounds_up_at_exact_decimal_boundaries():
+    for short_ce, short_pe, width in ((1100, 900, 1000),
+                                     (1099.99, 900, 1000),
+                                     (1100.01, 899.99, 1000),
+                                     (1100.01, 900, 1100),
+                                     (1101, 900, 1100)):
+        signal = candidate(width, short_ce, short_pe)
+        assert signal["wing_width"] == width
+        assert [leg["strike"] for leg in signal["legs"][:2]] == [80000 - width, 80000 + width]
+
+
+def test_half_premium_wings_reject_net_credit_outside_width():
+    for credit in (0, 1000, 1500):
+        with patch.object(fly, "fly_credit", return_value=credit):
+            assert_raises(candidate)
 
 
 def test_exact_price_boundaries_and_21_dte_at_final_checkpoint():
@@ -200,13 +221,13 @@ def test_seven_checkpoints_no_minute_by_minute_or_missed_checkpoint_fill():
 
 def test_full_fly_pnl_all_eight_order_charges_and_gross_preserved():
     trade = fly.open_trade(candidate())
-    prices = {10: 600, 11: 400, 12: 250, 13: 250}
+    prices = {10: 600, 11: 400, 12: 375, 13: 375}
     with patch.object(fly, "candle_price", side_effect=lambda conn, secid, segment, instrument, cutoff:
                       (prices[secid], cutoff - timedelta(minutes=1))):
         fields = fly.evaluate_trade(None, trade, CUTOFF + timedelta(days=1))
-    assert fields["strategy_state"] == "closed" and fields["pnl"] == 20000
+    assert fields["strategy_state"] == "closed" and fields["pnl"] == 5000
     assert fields["charges"]["brokerage"] == 160
-    assert fields["net_pnl"] == fly.money(20000 - fields["charges"]["total"])
+    assert fields["net_pnl"] == fly.money(5000 - fields["charges"]["total"])
     assert all("exit_price_time" in leg for leg in fields["legs"])
     assert "running_net_pnl" not in fields
 
@@ -215,23 +236,23 @@ def test_losses_do_not_close_fly_before_21_dte_even_at_maximum_loss():
     signal = candidate()
     for leg in signal["legs"]:
         if leg["side"] == "BUY":
-            leg["entry_price"] = 750
-    signal["credit_per_unit"] = 500
+            leg["entry_price"] = 875
+    signal["credit_per_unit"] = 250
     trade = fly.open_trade(signal)
-    prices = {10: 1100, 11: 900, 12: 500, 13: 500}
+    prices = {10: 600, 11: 400, 12: 250, 13: 250}
     with patch.object(fly, "candle_price", side_effect=lambda conn, secid, segment, instrument, cutoff:
                       (prices[secid], cutoff - timedelta(minutes=1))):
         fields = fly.evaluate_trade(None, trade, CUTOFF + timedelta(days=1))
         assert fields["running_pnl"] == -trade["total_credit_received"]
         assert "strategy_state" not in fields and "exit_reason" not in fields
-        prices.update({10: 1500, 11: 1500})
+        prices.update({10: 1100, 11: 900, 12: 500, 13: 500})
         fields = fly.evaluate_trade(None, trade, CUTOFF + timedelta(days=1))
-        assert fields["running_pnl"] == -30000
+        assert fields["running_pnl"] == -15000
         assert "strategy_state" not in fields and "exit_reason" not in fields
         fields = fly.evaluate_trade(None, trade, CUTOFF + timedelta(days=24))
     assert fields["strategy_state"] == "closed"
     assert fields["exit_reason"] == "21 calendar DTE time exit"
-    assert fields["pnl"] == -30000 and fields["charges"]["brokerage"] == 160
+    assert fields["pnl"] == -15000 and fields["charges"]["brokerage"] == 160
 
 
 def test_checkpoint_is_only_evaluated_once_after_successful_write():
@@ -284,6 +305,21 @@ def test_restart_repairs_missing_paper_orders_and_never_calls_broker():
         assert "place_order(" not in path.read_text(encoding="utf-8")
 
 
+def test_rule_revision_preserves_same_expiry_block_and_rejects_active_v1():
+    signal = candidate()
+    previous = fly.open_trade(signal)
+    previous.update(_id=f"sensex-ironfly-45dte-v1:{signal['expiry']}",
+                    strategy_version="sensex-ironfly-45dte-v1", strategy_state="closed")
+    trades, orders = collection([previous]), collection()
+    with patch.object(executor.edge, "load_instruments", return_value=master()), \
+            patch.object(executor, "build_candidate", return_value=signal), \
+            patch.object(executor, "notify"):
+        assert executor.process_checkpoint(None, trades, orders, CUTOFF, None) is True
+    assert len(trades.documents) == 1 and not orders.documents
+    previous["strategy_state"] = "active"
+    assert_raises(lambda: executor.process_checkpoint(None, collection([previous]), orders, CUTOFF, None))
+
+
 def test_stale_candidate_and_active_legacy_record_block_entries():
     signal = candidate()
     signal["entry_date"] = (TODAY - timedelta(days=1)).isoformat()
@@ -309,7 +345,7 @@ def test_entry_selection_runs_in_same_job_without_signal_storage():
 
 def test_vix_rejection_is_not_repeated_during_entry_window():
     entry = candidate()
-    entry.update(eligible=False, reason="VIX filter blocked", vix_percentile=50)
+    entry.update(eligible=False, reason="VIX filter blocked", vix_percentile=25)
     trades, orders = collection(), collection()
     with patch.object(executor.edge, "load_instruments", return_value=master()), \
             patch.object(executor, "build_candidate", return_value=entry) as build, \

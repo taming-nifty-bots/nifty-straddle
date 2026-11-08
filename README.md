@@ -4,17 +4,24 @@ Names are retained. The old Nifty/PnF/AFT business logic is replaced by the
 single Dhan Sensex paper job. November8 rollout deployed and resumed
 `nifty-straddle`; the obsolete Azure `nifty-straddle-signal` job was deleted.
 
+November8 rule revision **v2 is the paper forward-test configuration**:
+VIX percentile strictly above25 and half-premium wing distance.
+Pushes to `master` test and deploy the retained Sensex job with
+`live_trading=false`. BankNifty research does not change this instrument.
+The earlier v1 rollout used image5; exact release status is recorded in the vault.
+
 ## Approved rules
 
 - Dhan BSE Sensex options; four legs, one actual contract lot per leg.
 - At15:15 IST, select the first listed monthly expiry at least45 calendar DTE.
   Monthly dates labelled `M`, `Q` or `H` in the master are eligible; `W` is not.
-- Enter only if current India VIX is strictly above its percentile50 relative
+- Enter only if current India VIX is strictly above its percentile25 relative
   to the preceding year's daily closes. Exclude today's daily bar; require
   at least200 distinct observations spanning350 days. Missing data blocks entry.
 - Sell ATM CE and PE at the same100-point-rounded strike.
-- Buy PE below ATM and CE above ATM. Symmetric wing distance is the initial
-  short CE+PE premium, rounded up to the next100-point strike interval.
+- Buy PE below ATM and CE above ATM. Symmetric wing distance is **50%** of
+  the initial short CE+PE quoted premium, rounded up to the next100-point
+  strike interval. This specifies strike distance, not the hedge purchase price.
 - Whole-fly net credit means shorts minus hedges, **before charges**.
   Take profit when whole-fly closing value is at most50% of that initial credit.
 - Check price exits only at09:30,10:30,11:30,12:30,13:30,14:30 and15:15 IST.
@@ -24,7 +31,7 @@ single Dhan Sensex paper job. November8 rollout deployed and resumed
   remains at least45 DTE.
 
 The video tests naked Nifty straddles/strangles, not this Sensex iron fly.
-The instrument, wings, whole-fly thresholds, VIX50 choice, checkpoint times
+The instrument, wings, whole-fly thresholds, VIX25 choice, checkpoint times
 and first-expiry-at-least45 selection are owner-approved adaptations, not
 claims of an exact reproduction or validated edge.
 
@@ -47,10 +54,11 @@ Historical Mongo trade/order records were not deleted.
 
 Keep `Bots.nifty_Straddle_<user>` and `Bots.orders_nifty_Straddle_<user>`;
 old records are untouched. New records have
-`strategy_version=sensex-ironfly-45dte-v1` and `simulated=true`.
+`strategy_version=sensex-ironfly-45dte-v2` and `simulated=true`.
 One deterministic trade ID per expiry prevents re-entry; deterministic paper
 order IDs can be repaired from the trade after restart without duplicate fills.
-Legacy active records block this pilot rather than being managed as iron flies.
+Legacy/v1 active records block v2 rather than being managed under new rules.
+Completed Sensex expiries remain blocked across both rule versions.
 
 There is no broker-order path. `live_trading` must be absent/false; any other
 value fails before connecting. Old `instrument_name` and `quantity` values
@@ -112,7 +120,9 @@ Azure credentials are five secret references; old Definedge, instrument and
 quantity environment settings were removed. Verify `runningState=Ready`
 through ARM API2026-07-01: older CLI output can omit the suspension field.
 
-Validation:23 offline strategy checks and7 shared-charge checks passed.
+V2 validation:26 offline strategy checks pass, including strict25
+boundaries, exact decimal half-premium rounding, both exits and v1 separation.
+Initial v1 release:23 strategy checks and7 shared-charge checks passed.
 The initial code deployment succeeded in run4. Its bounded startup execution
 logged PAPER ONLY without runtime errors and was explicitly stopped.
 Mongo inspection found no active legacy trade and no new-version record.
@@ -123,3 +133,16 @@ no historical candles. A quote diagnostic received HTTP429 and was stopped.
 Illiquidity versus data coverage remains unresolved; market-session option
 pricing/entry is not yet validated. Missing prices block entry, never become
 fabricated fills. No strategy profitability or live execution is validated.
+
+## Backtest preparation
+
+Use the v2 functions in `ironfly.py` for historical selection and valuation;
+do not duplicate the rules or pool v1/Nifty trades into the v2 results.
+The proposed six-month window is May8-November6,2026. Historical fixed-contract
+Sensex option data, expiry/listing/lot metadata and VIX warm-up history still
+need verification. Rolling ATM observations must be matched to the original
+four strikes and expiry; missing data is not a synthetic fill.
+Sensex six-month and BankNifty three-month data probes found incomplete
+fixed-contract coverage; no performance backtest was completed. This is not
+proof that current listed Sensex contracts are unavailable. Forward testing
+must verify all four actual contracts and prices; missing data blocks entry.

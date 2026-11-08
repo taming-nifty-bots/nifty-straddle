@@ -12,7 +12,7 @@ from tamingnifty import connect_dhan as edge
 from tamingnifty import utils as util
 from tamingnifty.charges import money, order_charges, sum_charges
 
-STRATEGY_VERSION = "sensex-ironfly-45dte-v1"
+STRATEGY_VERSION = "sensex-ironfly-45dte-v2"
 ENTRY_TIME = time(15, 15)
 CHECK_TIMES = (time(9, 30), time(10, 30), time(11, 30), time(12, 30),
                time(13, 30), time(14, 30), ENTRY_TIME)
@@ -150,15 +150,16 @@ def build_candidate(conn, master, cutoff):
     base = {"strategy_version": STRATEGY_VERSION,
             "entry_date": cutoff.date().isoformat(), "cutoff": cutoff,
             "expiry": expiry.isoformat(), "vix": vix, "vix_percentile": percentile}
-    if percentile <= 50:
-        base.update(eligible=False, reason="VIX is not strictly above the prior-year 50th percentile")
+    if percentile <= 25:
+        base.update(eligible=False, reason="VIX is not strictly above the prior-year 25th percentile")
         return base
     atm = int((Decimal(str(spot)) / STRIKE_INTERVAL).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) * STRIKE_INTERVAL
     shorts = [contract(contracts, atm, "CE", "SELL"), contract(contracts, atm, "PE", "SELL")]
     for leg in shorts:
         leg["entry_price"], leg["price_time"] = candle_price(
             conn, leg["security_id"], "BSE_FNO", "OPTIDX", cutoff)
-    width = math.ceil((shorts[0]["entry_price"] + shorts[1]["entry_price"]) / STRIKE_INTERVAL) * STRIKE_INTERVAL
+    straddle_premium = Decimal(str(shorts[0]["entry_price"])) + Decimal(str(shorts[1]["entry_price"]))
+    width = math.ceil(straddle_premium / 2 / STRIKE_INTERVAL) * STRIKE_INTERVAL
     legs = [contract(contracts, atm - width, "PE", "BUY"),
             contract(contracts, atm + width, "CE", "BUY")] + shorts
     for leg in legs[:2]:

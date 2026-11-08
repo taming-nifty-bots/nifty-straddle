@@ -36,8 +36,9 @@ def process_checkpoint(conn, strategies, orders, cutoff, slack, entry_checked=Fa
         notify(slack, f"No Sensex paper entry: {candidate['reason']}; VIX percentile {candidate['vix_percentile']:.2f}")
         return True
     key = trade_id(candidate["expiry"])
-    if strategies.find_one({"_id": key}):
-        return True
+    for previous in strategies.find({"expiry": candidate["expiry"]}):
+        if previous.get("strategy_version", "").startswith("sensex-ironfly-45dte-"):
+            return True
     trade = open_trade(candidate)
     result = strategies.update_one({"_id": key}, {"$setOnInsert": trade}, upsert=True)
     if result.upserted_id is not None:
