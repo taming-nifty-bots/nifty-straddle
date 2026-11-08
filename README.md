@@ -1,8 +1,8 @@
 # Nifty Straddle - Sensex Iron Fly Paper Pilot
 
-Names are retained. The old Nifty/PnF/AFT business logic is replaced locally;
-Azure jobs were last verified suspended and no deployment is performed by
-this change. Final Azure read-back was blocked by an expired CLI login.
+Names are retained. The old Nifty/PnF/AFT business logic is replaced by the
+single Dhan Sensex paper job. November8 rollout deployed and resumed
+`nifty-straddle`; the obsolete Azure `nifty-straddle-signal` job was deleted.
 
 ## Approved rules
 
@@ -42,8 +42,8 @@ No separate signal process or `Bots.supertrend` handoff is required.
 
 The old signal script, Dockerfile and requirements were removed; its local
 `.env` was left untouched. CI no longer builds, deploys or restarts the signal
-job. Keep the legacy Azure signal job suspended when deploying the single job;
-this local change does not modify or delete Azure resources or old Mongo data.
+job. Its Azure resource was deleted after the replacement was verified.
+Historical Mongo trade/order records were not deleted.
 
 Keep `Bots.nifty_Straddle_<user>` and `Bots.orders_nifty_Straddle_<user>`;
 old records are untouched. New records have
@@ -101,12 +101,25 @@ Configure one scheduled replica/parallelism, starting before09:30 IST and
 allowing it to run through15:16. Delete the obsolete signal job only after the
 single replacement job is deployed and its configuration is verified.
 
-Dependencies require `tamingnifty==2.4.1`, whose local change adds BSE option
-charge support while preserving NSE defaults. Publish that shared version
-before installing/deploying these consumers; this change does not publish it.
-The existing CI deploys on a push, so do not push until release and Azure
-configuration are approved. No Azure activation is included.
+Dependencies require published `tamingnifty==2.4.1`, with BSE option charge
+support and unchanged NSE defaults. Tag `v2.4.1` publication and exact wheel
+source/checksum were verified before the consumer deployment.
 
-Validation:17 paper-rule/lifecycle checks and7 shared-charge checks passed.
-Runtime compilation, CI YAML/build wiring and edited wiki links also passed.
-Mongo read-back found36 legacy records and zero new-version records.
+November8 operational configuration: `live_trading=false`, one replica/
+parallelism/completion, zero retries,25,000-second timeout. Cron
+`50 3 * * 1-5` starts at09:20 IST Monday-Friday; the process ends at15:16.
+Azure credentials are five secret references; old Definedge, instrument and
+quantity environment settings were removed. Verify `runningState=Ready`
+through ARM API2026-07-01: older CLI output can omit the suspension field.
+
+Validation:23 offline strategy checks and7 shared-charge checks passed.
+The initial code deployment succeeded in run4. Its bounded startup execution
+logged PAPER ONLY without runtime errors and was explicitly stopped.
+Mongo inspection found no active legacy trade and no new-version record.
+
+Read-only November6 data preview verified Dhan authentication and reached
+option pricing after the VIX filter, but the selected long-dated option had
+no historical candles. A quote diagnostic received HTTP429 and was stopped.
+Illiquidity versus data coverage remains unresolved; market-session option
+pricing/entry is not yet validated. Missing prices block entry, never become
+fabricated fills. No strategy profitability or live execution is validated.
