@@ -83,13 +83,23 @@ python straddle\straddle.py
 docker build -f straddle\Dockerfile -t nifty-straddle:local .
 ```
 
-Runtime needs Dhan's existing shared-token/authentication configuration,
-`CONNECTION_STRING`, `user_name` and `slack_token`. Do not run the jobs merely
+Runtime needs `DHAN_CLIENT_ID`, `DHAN_PIN`, `DHAN_TOTP`, `CONNECTION_STRING`,
+`user_name` and `slack_token`. Dhan authentication reuses the shared Mongo token;
+do not create a separate per-job login/token store. Do not run the job merely
 to test imports: successful paper jobs write trade/order records.
 
 The one Docker build uses the repository root context, with `.env` and git
 data excluded. The image/job name remains `nifty-straddle`.
 CI runs offline tests before deploying that one job.
+CI explicitly sets `live_trading=false`. The Azure value is configurable, but
+`true` is deliberately rejected: this version has no real-order implementation.
+
+Inject Dhan credentials, Mongo connection and Slack token through Azure job
+secret references, never Docker defaults or git. Remove the old Definedge
+`INTEGRATE_API_TOKEN`, `INTEGRATE_API_SECRET` and `TOTP` environment settings.
+Configure one scheduled replica/parallelism, starting before09:30 IST and
+allowing it to run through15:16. Delete the obsolete signal job only after the
+single replacement job is deployed and its configuration is verified.
 
 Dependencies require `tamingnifty==2.4.1`, whose local change adds BSE option
 charge support while preserving NSE defaults. Publish that shared version

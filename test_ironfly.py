@@ -363,6 +363,16 @@ def test_clients_reject_live_mode_before_any_connection():
         mongo.assert_not_called()
 
 
+def test_container_and_deployment_defaults_are_paper_only():
+    dockerfile = (ROOT / "straddle" / "Dockerfile").read_text(encoding="utf-8")
+    assert "ENV user_name=sugam" in dockerfile
+    assert "ENV live_trading=false" in dockerfile
+    for name in ("INTEGRATE_API_TOKEN", "INTEGRATE_API_SECRET", "ENV TOTP", "ENV slack_token"):
+        assert name not in dockerfile
+    workflow = (ROOT / ".github" / "workflows" / "straddle-CI-CD.yml").read_text(encoding="utf-8")
+    assert "--set-env-vars live_trading=false" in workflow
+
+
 if __name__ == "__main__":
     tests = [value for key, value in sorted(globals().items()) if key.startswith("test_")]
     for test in tests:

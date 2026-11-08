@@ -54,7 +54,8 @@ jobs:
             az containerapp job update \
               --name ${{ secrets.NIFTY_STRADDLE_JOB_NAME }} \
               --resource-group ${{ secrets.RESOURCE_GROUP }} \
-              --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }}
+              --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }} \
+              --set-env-vars live_trading=false
 
       - name: Restart running Nifty Straddle jobs
         uses: azure/CLI@v1
