@@ -15,7 +15,8 @@ ENV user_name = "sugam"
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN echo $(date)
 # Copy files to working directory
-COPY . /app/src/
+COPY ironfly.py /app/src/ironfly.py
+COPY straddle/ /app/src/
 WORKDIR /app
 # Install python packages using requirements.txt
 RUN pip install -r src/requirements.txt

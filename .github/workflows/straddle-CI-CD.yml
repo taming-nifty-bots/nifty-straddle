@@ -8,7 +8,6 @@ on:
 
 env:
   STRADDLE_IMAGE_NAME: nifty-straddle:${{ github.run_number }}   # Change as needed
-  STRADDLE_ANALYSIS_IMAGE_NAME: nifty-straddle-analysis:${{ github.run_number }}   # Change as needed
 
 jobs:
   build-and-deploy:
@@ -17,6 +16,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Test paper iron fly
+        run: |
+          python -m pip install -r straddle/requirements.txt
+          python test_ironfly.py
 
       - name: Log in to Azure
         uses: azure/login@v1
@@ -33,21 +42,10 @@ jobs:
           
       - name: Build Docker image
         run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }} ./straddleEntry
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_ANALYSIS_IMAGE_NAME }} ./straddle
+          docker build -f straddle/Dockerfile -t ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }} .
       - name: Push Docker image
         run: |
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }}
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_ANALYSIS_IMAGE_NAME }}
-
-      - name: Deploy to Nifty Straddle Signal Job
-        uses: azure/CLI@v1
-        with:
-          inlineScript: |
-            az containerapp job update \
-              --name ${{ secrets.NIFTY_STRADDLE_SIGNAL_JOB_NAME }} \
-              --resource-group ${{ secrets.RESOURCE_GROUP }} \
-              --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_ANALYSIS_IMAGE_NAME }}
 
       - name: Deploy to Nifty Straddle Job
         uses: azure/CLI@v1
@@ -57,16 +55,6 @@ jobs:
               --name ${{ secrets.NIFTY_STRADDLE_JOB_NAME }} \
               --resource-group ${{ secrets.RESOURCE_GROUP }} \
               --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }}
-
-      - name: Restart running Signal jobs
-        uses: azure/CLI@v1
-        with:
-          inlineScript: |
-            running_jobs=$(az containerapp job execution list --name ${{ secrets.NIFTY_STRADDLE_SIGNAL_JOB_NAME }} --resource-group ${{ secrets.RESOURCE_GROUP }} --query "[?properties.status=='Running']")
-            if [ "$running_jobs" != "[]" ]; then
-              az containerapp job stop -n ${{ secrets.NIFTY_STRADDLE_SIGNAL_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
-              az containerapp job start -n ${{ secrets.NIFTY_STRADDLE_SIGNAL_JOB_NAME }} -g ${{ secrets.RESOURCE_GROUP }}
-            fi
 
       - name: Restart running Nifty Straddle jobs
         uses: azure/CLI@v1
