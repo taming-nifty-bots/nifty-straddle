@@ -55,6 +55,11 @@ jobs:
               --name ${{ secrets.NIFTY_STRADDLE_JOB_NAME }} \
               --resource-group ${{ secrets.RESOURCE_GROUP }} \
               --image ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.STRADDLE_IMAGE_NAME }} \
+              --cron-expression "30 9 * * 1-5" \
+              --replica-timeout 900 \
+              --replica-retry-limit 0 \
+              --parallelism 1 \
+              --replica-completion-count 1 \
               --set-env-vars live_trading=false
 
       - name: Restart running Nifty Straddle jobs

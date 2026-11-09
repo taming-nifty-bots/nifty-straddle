@@ -1,19 +1,18 @@
-# Nifty Straddle - Sensex Iron Fly Paper Pilot
+# Nifty Straddle - Once-Daily Nifty Iron Fly Paper Pilot
 
-Names are retained. The old Nifty/PnF/AFT business logic is replaced by the
-single Dhan Sensex paper job. November8 rollout deployed and resumed
-`nifty-straddle`; the obsolete Azure `nifty-straddle-signal` job was deleted.
+Names are retained. One Dhan Nifty paper job runs at15:00 IST, updates Mongo
+and exits. There is no all-day loop, separate signal job or real-order path.
+Current version: `nifty-ironfly-45dte-v1`. Sensex history remains untouched.
 
-November8 rule revision **v2 is the paper forward-test configuration**:
-VIX percentile strictly above25 and half-premium wing distance.
-Pushes to `master` test and deploy the retained Sensex job with
-`live_trading=false`. BankNifty research does not change this instrument.
-The earlier v1 rollout used image5; exact release status is recorded in the vault.
+Pushes to `master` test and deploy the retained job with `live_trading=false`,
+weekday UTC cron `30 9 * * 1-5` (15:00 IST), one replica/parallelism/completion,
+zero retries and a900-second maximum timeout. The process exits as soon as
+its single evaluation finishes; timeout is a safety cap, not a waiting period.
 
 ## Approved rules
 
-- Dhan BSE Sensex options; four legs, one actual contract lot per leg.
-- At15:15 IST, select the first listed monthly expiry at least45 calendar DTE.
+- Dhan NSE Nifty options; four legs, one actual contract lot per leg.
+- At15:00 IST, select the first listed monthly expiry at least45 calendar DTE.
   Monthly dates labelled `M`, `Q` or `H` in the master are eligible; `W` is not.
 - Enter only if current India VIX is strictly above its percentile25 relative
   to the preceding year's daily closes. Exclude today's daily bar; require
@@ -24,14 +23,19 @@ The earlier v1 rollout used image5; exact release status is recorded in the vaul
   strike interval. This specifies strike distance, not the hedge purchase price.
 - Whole-fly net credit means shorts minus hedges, **before charges**.
   Take profit when whole-fly closing value is at most50% of that initial credit.
-- Check price exits only at09:30,10:30,11:30,12:30,13:30,14:30 and15:15 IST.
-  If still open at21 calendar DTE or less, close at15:15.
+- Check both the50%-credit target and21-calendar-DTE exit once daily at15:00.
+  No intraday price stop. Daily-only target checks can miss temporary profits.
+- If a position remains open, save its gross `pnl`/`running_pnl`, calendar
+  `holding_days`, `dte`, `last_check`, closing value and four observed marks.
+  `net_pnl` is final only after closure; entry charges remain recorded.
+- After a closure, repair the exit order records and consider a new eligible
+  expiry immediately. An already-traded Nifty expiry remains blocked.
 - No adjustments, no overlapping positions, no same-expiry re-entry.
   A blocked VIX entry can be reconsidered on a later day while that expiry
   remains at least45 DTE.
 
-The video tests naked Nifty straddles/strangles, not this Sensex iron fly.
-The instrument, wings, whole-fly thresholds, VIX25 choice, checkpoint times
+The video tests naked Nifty straddles/strangles, not this hedged iron fly.
+The wings, whole-fly thresholds, VIX25 choice, daily checkpoint
 and first-expiry-at-least45 selection are owner-approved adaptations, not
 claims of an exact reproduction or validated edge.
 
@@ -42,8 +46,8 @@ stop is used; the intact hedge limits theoretical loss before costs.
 ## Single job and accounting
 
 `straddle\straddle.py` now handles both entry selection and position management
-in the existing `nifty-straddle` job. At15:15, when flat, it checks VIX and
-builds the fly directly. Position exits still run at the seven checkpoints.
+in the existing `nifty-straddle` job. At15:00 it manages any active position
+first, then checks VIX and builds the fly if flat.
 `ironfly.py` holds the plain-function rules, data checks and accounting.
 No separate signal process or `Bots.supertrend` handoff is required.
 
@@ -54,32 +58,44 @@ Historical Mongo trade/order records were not deleted.
 
 Keep `Bots.nifty_Straddle_<user>` and `Bots.orders_nifty_Straddle_<user>`;
 old records are untouched. New records have
-`strategy_version=sensex-ironfly-45dte-v2` and `simulated=true`.
+`strategy_version=nifty-ironfly-45dte-v1` and `simulated=true`.
 One deterministic trade ID per expiry prevents re-entry; deterministic paper
 order IDs can be repaired from the trade after restart without duplicate fills.
-Legacy/v1 active records block v2 rather than being managed under new rules.
-Completed Sensex expiries remain blocked across both rule versions.
+Any legacy/Sensex active record blocks this job rather than being silently
+converted. Closed Sensex history does not block a Nifty expiry.
 
 There is no broker-order path. `live_trading` must be absent/false; any other
 value fails before connecting. Old `instrument_name` and `quantity` values
-are deliberately ignored; the contract master supplies Sensex lot size.
-November8 public-master preview for November9 selects December31,52 DTE,
-20 units per leg. Actual entry must re-read the daily master and all prices.
+are deliberately ignored; the contract master supplies Nifty lot size.
+November9 public-master preview for November10 selects December29,49 DTE,
+65 units per leg. Actual entry must re-read the daily master and all prices.
 
 Paper prices are the most recent positive-volume completed minute-candle
 close in the same session, at/before the checkpoint. They are **not exact
 trade-tape LTP or executable bid/ask fills**. Index/VIX candles must be fresh;
 option quote timestamps are retained. Missing prices do not become zero.
-Checks use a one-minute polling window, with no retrospective fills for
-missed checkpoints. The single job ends at15:16 after the final window.
-Completed entry decisions are not repeated within that window; data failures
-can retry without leaving a partial paper trade.
+Startup is allowed from15:00 until15:05 IST; weekends or out-of-window
+starts notify and exit without broker requests. The actual startup minute is
+the cutoff:15:03 uses completed15:02-or-earlier same-session candles, never
+an invented15:00 fill. It evaluates once, not a polling/retry loop.
+An already-marked active trade is not marked again on a same-day rerun.
+Missing prices fail visibly and exit unsuccessfully; no partial paper entry
+or retrospective fill is fabricated. Re-running a failed job is manual.
+
+Historical Sensex v2: November9's15:15 entry was blocked by missing candles. An after-market
+read-only probe recovered Sensex/VIX15:14 closes, but the selected December31
+81100 CE (security1135111) returned HTTP200 with zero candles for the day.
+No v2 paper trade was written. Missing-price errors now identify security ID,
+segment, instrument and checkpoint; no price fallback or retrospective entry
+was added. Option-data coverage
+must be resolved separately; later recovery of index data does not prove what
+the API returned at15:15.
 
 `pnl` remains gross. `charges` is itemized and `net_pnl` is written on closure
-after all eight simulated entry/exit orders, using shared BSE option charges.
+after all eight simulated entry/exit orders, using shared NSE option charges.
 Running marks and the profit-target trigger are gross of charges. See the vault's
 Trading Charges reference for estimates and exclusions. No live leverage,
-broker fills, margins or Sensex strategy profitability have been validated.
+broker fills, margins or Nifty iron-fly profitability have been validated.
 
 ## Local validation and deployment prerequisites
 
@@ -105,13 +121,14 @@ CI explicitly sets `live_trading=false`. The Azure value is configurable, but
 Inject Dhan credentials, Mongo connection and Slack token through Azure job
 secret references, never Docker defaults or git. Remove the old Definedge
 `INTEGRATE_API_TOKEN`, `INTEGRATE_API_SECRET` and `TOTP` environment settings.
-Configure one scheduled replica/parallelism, starting before09:30 IST and
-allowing it to run through15:16. Delete the obsolete signal job only after the
-single replacement job is deployed and its configuration is verified.
+CI configures one scheduled replica/parallelism at15:00 IST with zero retries
+and a900-second cap. There is no all-day waiting process.
 
 Dependencies require published `tamingnifty==2.4.1`, with BSE option charge
 support and unchanged NSE defaults. Tag `v2.4.1` publication and exact wheel
 source/checksum were verified before the consumer deployment.
+
+## Historical Sensex rollout and data gaps
 
 November8 operational configuration: `live_trading=false`, one replica/
 parallelism/completion, zero retries,25,000-second timeout. Cron
@@ -136,8 +153,8 @@ fabricated fills. No strategy profitability or live execution is validated.
 
 ## Backtest preparation
 
-Use the v2 functions in `ironfly.py` for historical selection and valuation;
-do not duplicate the rules or pool v1/Nifty trades into the v2 results.
+Current `ironfly.py` is the once-daily Nifty version. Historical Sensex v2
+replays require its prior revision; do not pool instruments or timing policies.
 The proposed six-month window is May8-November6,2026. Historical fixed-contract
 Sensex option data, expiry/listing/lot metadata and VIX warm-up history still
 need verification. Rolling ATM observations must be matched to the original
