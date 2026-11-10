@@ -1,5 +1,14 @@
 # Nifty Straddle - Once-Daily Nifty Iron Fly Paper Pilot
 
+## NSE startup calendar
+
+The paper job requires `tamingnifty==2.4.3` and the annual `NSE:YYYY` document
+in `Bots.exchange_calendars`. Startup checks the IST trading date before broker
+login, market data or state writes. Holidays and weekends exit successfully;
+missing/invalid calendars or DB failures abort nonzero (fail-closed). Seed and
+verify the current year's calendar before starting. The15:00–15:05 window still applies.
+Offline startup checks: `python test_startup_calendar.py`.
+
 Names are retained. One Dhan Nifty paper job runs at15:00 IST, updates Mongo
 and exits. There is no all-day loop, separate signal job or real-order path.
 Current version: `nifty-ironfly-45dte-v1`. Sensex history remains untouched.
@@ -124,9 +133,9 @@ secret references, never Docker defaults or git. Remove the old Definedge
 CI configures one scheduled replica/parallelism at15:00 IST with zero retries
 and a900-second cap. There is no all-day waiting process.
 
-Dependencies require published `tamingnifty==2.4.1`, with BSE option charge
-support and unchanged NSE defaults. Tag `v2.4.1` publication and exact wheel
-source/checksum were verified before the consumer deployment.
+Dependencies now require `tamingnifty==2.4.3` for startup calendar gating.
+The prior deployment used `2.4.1`, with BSE option charge support and unchanged
+NSE defaults; its publication/wheel verification does not verify the new release.
 
 ## Historical Sensex rollout and data gaps
 

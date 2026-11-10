@@ -2,6 +2,7 @@
 import traceback
 import sys
 from pathlib import Path
+from tamingnifty.safety import check_trading_day
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -58,6 +59,8 @@ def main():
     mongo, strategies, orders, slack = clients()
     notify(slack, f"{STRATEGY_VERSION} executor started; PAPER ONLY; old quantity/instrument settings are not used")
     try:
+        if not check_trading_day(mongo, lambda message: notify(slack, message)):
+            return
         now = util.ist_now()
         cutoff = checkpoint(now)
         if now.weekday() >= 5 or cutoff is None:

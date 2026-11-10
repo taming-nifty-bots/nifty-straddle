@@ -448,6 +448,7 @@ def test_daily_main_runs_once_closes_client_and_returns_without_sleep():
     trades, orders = collection(), collection()
     mongo = Mock()
     with patch.object(executor, "clients", return_value=(mongo, trades, orders, None)), \
+            patch.object(executor, "check_trading_day", return_value=True), \
             patch.object(executor.util, "ist_now", return_value=CUTOFF.replace(second=20)), \
             patch.object(executor.edge, "login_to_dhan", return_value="conn") as login, \
             patch.object(executor, "process_checkpoint") as process, \
@@ -466,6 +467,7 @@ def test_daily_main_skips_weekends_and_outside_window_without_broker_calls():
         mongo = Mock()
         with patch.object(executor, "clients",
                           return_value=(mongo, collection(), collection(), None)), \
+                patch.object(executor, "check_trading_day", return_value=True), \
                 patch.object(executor.util, "ist_now", return_value=now), \
                 patch.object(executor.edge, "login_to_dhan") as login, \
                 patch.object(executor, "process_checkpoint") as process, \
@@ -481,6 +483,7 @@ def test_daily_main_reports_failure_and_exits_unsuccessfully():
     mongo = Mock()
     with patch.object(executor, "clients",
                       return_value=(mongo, collection(), collection(), None)), \
+            patch.object(executor, "check_trading_day", return_value=True), \
             patch.object(executor.util, "ist_now", return_value=CUTOFF), \
             patch.object(executor.edge, "login_to_dhan", return_value="conn"), \
             patch.object(executor, "process_checkpoint", side_effect=ValueError("missing data")) as process, \
